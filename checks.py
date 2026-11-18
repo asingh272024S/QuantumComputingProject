@@ -2,7 +2,7 @@ import numpy as np
 from qiskit.quantum_info import Operator, Statevector
 
 import model
-from circuits import a_operator, uniformly_controlled_ry
+from circuits import a_operator, controlled_grover, grover_operator, uniformly_controlled_ry
 
 TOL = 1e-9
 
@@ -38,6 +38,25 @@ def main():
                           f"max |p_sim - p| = {np.abs(p_sim - p).max():.2e}"))
     results.append(report("A encodes a = E[f]/f_max", abs(a_sim - a) < TOL,
                           f"a_sim = {a_sim:.12f}, a = {a:.12f}"))
+
+    Q = grover_operator(A)
+    U = Operator(Q).data
+    psi = Statevector(A).data
+    vals, vecs = np.linalg.eig(U)
+    weights = np.abs(vecs.conj().T @ psi) ** 2
+    theta = np.arcsin(np.sqrt(a))
+    support = weights > 1e-6
+    phases = np.angle(vals[support])
+    ok = (support.sum() == 2 and np.allclose(np.sort(np.abs(phases)), 2 * theta, atol=1e-7)
+          and np.allclose(weights[support], 0.5, atol=1e-7))
+    results.append(report("A|0> splits evenly over Q eigenvectors with phases +/-2θ", ok,
+                          f"phases = {np.round(phases, 6)}, 2θ = {2 * theta:.6f}, weights = {np.round(weights[support], 6)}"))
+
+    cU = Operator(controlled_grover(A)).data
+    on, off = cU[1::2, 1::2], cU[0::2, 0::2]
+    ok = np.allclose(on, U, atol=1e-8) and np.allclose(off, np.eye(len(U)), atol=1e-8)
+    results.append(report("c-Q is Q (with its -1 phase) when control=1 and I when control=0", ok,
+                          f"max errors {np.abs(on - U).max():.2e}, {np.abs(off - np.eye(len(U))).max():.2e}"))
 
     print(f"\n{sum(results)}/{len(results)} checks passed")
     return all(results)

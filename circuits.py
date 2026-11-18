@@ -49,3 +49,43 @@ def a_operator(p, f_norm):
     qc.append(state_prep(p).to_gate(), range(n))
     qc.append(payoff_rotation(f_norm).to_gate(), range(n + 1))
     return qc
+
+
+def zero_reflection(k):
+    # S_0 = I - 2|0><0|
+    qc = QuantumCircuit(k, name="S_0")
+    qc.x(range(k))
+    qc.h(k - 1)
+    qc.mcx(list(range(k - 1)), k - 1)
+    qc.h(k - 1)
+    qc.x(range(k))
+    return qc
+
+
+def grover_operator(a_circ):
+    # Q = -A S_0 A^dagger S_chi, good states have ancilla (last qubit) = 1
+    k = a_circ.num_qubits
+    qc = QuantumCircuit(*a_circ.qregs, name="Q")
+    qc.z(k - 1)
+    qc.append(a_circ.inverse().to_gate(label="A†"), range(k))
+    qc.append(zero_reflection(k).to_gate(), range(k))
+    qc.append(a_circ.to_gate(), range(k))
+    qc.global_phase += np.pi
+    return qc
+
+
+def controlled_grover(a_circ):
+    # qubit 0 is the control; A and A^dagger need no control since A A^dagger = I when it is off
+    k = a_circ.num_qubits
+    st = list(range(1, k + 1))
+    qc = QuantumCircuit(k + 1, name="c-Q")
+    qc.cz(0, k)
+    qc.append(a_circ.inverse().to_gate(label="A†"), st)
+    qc.x(st)
+    qc.h(k)
+    qc.mcx([0] + st[:-1], k)
+    qc.h(k)
+    qc.x(st)
+    qc.append(a_circ.to_gate(), st)
+    qc.z(0)
+    return qc
