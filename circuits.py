@@ -1,5 +1,5 @@
 import numpy as np
-from qiskit import QuantumCircuit, QuantumRegister
+from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister
 
 
 def uniformly_controlled_ry(alphas):
@@ -88,4 +88,44 @@ def controlled_grover(a_circ):
     qc.x(st)
     qc.append(a_circ.to_gate(), st)
     qc.z(0)
+    return qc
+
+
+def qft(m):
+    qc = QuantumCircuit(m, name="QFT")
+    for j in reversed(range(m)):
+        qc.h(j)
+        for k in reversed(range(j)):
+            qc.cp(np.pi / 2 ** (j - k), j, k)
+    for i in range(m // 2):
+        qc.swap(i, m - 1 - i)
+    return qc
+
+
+def qae_circuit(a_circ, m, measure=True):
+    # evaluation qubits 0..m-1 (qubit j controls Q^(2^j)), then the A register
+    k = a_circ.num_qubits
+    ev, st = list(range(m)), list(range(m, m + k))
+    cq = controlled_grover(a_circ).to_gate()
+    qc = QuantumCircuit(QuantumRegister(m, "eval"), *a_circ.qregs)
+    if measure:
+        qc.add_register(ClassicalRegister(m, "y"))
+    qc.append(a_circ.to_gate(), st)
+    qc.h(ev)
+    for j in range(m):
+        power = QuantumCircuit(k + 1, name=f"c-Q^{2**j}")
+        for _ in range(2**j):
+            power.append(cq, range(k + 1))
+        qc.append(power.to_gate(label=f"   c-Q^{2**j}   "), [ev[j]] + st)
+    qc.append(qft(m).inverse().to_gate(label="   QFT†   "), ev)
+    if measure:
+        qc.measure(ev, range(m))
+    return qc
+
+
+def direct_sampling_circuit(a_circ):
+    k = a_circ.num_qubits
+    qc = QuantumCircuit(k, 1)
+    qc.append(a_circ.to_gate(), range(k))
+    qc.measure(k - 1, 0)
     return qc

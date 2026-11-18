@@ -1,8 +1,10 @@
 import numpy as np
+from qiskit.circuit.library import QFTGate
 from qiskit.quantum_info import Operator, Statevector
 
 import model
-from circuits import a_operator, controlled_grover, grover_operator, uniformly_controlled_ry
+from circuits import a_operator, controlled_grover, grover_operator, qae_circuit, qft, uniformly_controlled_ry
+from qae import theory_distribution
 
 TOL = 1e-9
 
@@ -39,6 +41,10 @@ def main():
     results.append(report("A encodes a = E[f]/f_max", abs(a_sim - a) < TOL,
                           f"a_sim = {a_sim:.12f}, a = {a:.12f}"))
 
+    for m in range(1, 7):
+        ok = Operator(qft(m)).equiv(Operator(QFTGate(m)))
+        results.append(report(f"hand-built QFT == QFTGate (m={m})", ok, "unitaries equal up to global phase"))
+
     Q = grover_operator(A)
     U = Operator(Q).data
     psi = Statevector(A).data
@@ -57,6 +63,13 @@ def main():
     ok = np.allclose(on, U, atol=1e-8) and np.allclose(off, np.eye(len(U)), atol=1e-8)
     results.append(report("c-Q is Q (with its -1 phase) when control=1 and I when control=0", ok,
                           f"max errors {np.abs(on - U).max():.2e}, {np.abs(off - np.eye(len(U))).max():.2e}"))
+
+    for m in range(1, 6):
+        sv = Statevector(qae_circuit(A, m, measure=False))
+        sim = sv.probabilities(qargs=list(range(m)))
+        th = theory_distribution(a, m)
+        tvd = 0.5 * np.abs(sim - th).sum()
+        results.append(report(f"QAE output == Brassard distribution (m={m})", tvd < 1e-8, f"TVD = {tvd:.2e}"))
 
     print(f"\n{sum(results)}/{len(results)} checks passed")
     return all(results)
